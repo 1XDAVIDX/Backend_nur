@@ -18,17 +18,12 @@ class RegistroUsuario(base):
     contraseña = Column(String(100), nullable=False)  
     rol=Column(String(20), nullable=False )
 
-class RegistroCompra(base):
-    __tablename__ = "compra"
-    id_compra = Column(Integer, primary_key=True, autoincrement=True, unique=True, index=True)
-    id_usuario = Column(String(20), ForeignKey('usuario.id_usuario'), index=True)
-    fecha = Column(Date, nullable=True)
-    total = Column(Numeric(10, 2), nullable=True)
 
-class RegistroDetalleCompra(base):
-    __tablename__ = "compradetalle"
-    id_detalle = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    id_compra = Column(Integer, ForeignKey('compra.id_compra'), index=True)
+
+class compra(base):
+    __tablename__ = "compra"
+    id_compra = Column(Integer, autoincrement=True, primary_key=True, index=True)
     id_producto = Column(String(20), ForeignKey('producto.id_producto'), index=True)
+    id_usuario = Column(String(20), ForeignKey('usuario.id_usuario'), index=True)
     cantidad = Column(Integer, nullable=True)
-    precio_unitario = Column(Numeric(10, 2), nullable=True)
+    total = Column(Numeric(10, 2), nullable=True)

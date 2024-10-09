@@ -1,4 +1,5 @@
 from pydantic import BaseModel;
+from typing import Optional
 
 class usuarioBase(BaseModel):
     id_usuario:str
@@ -17,3 +18,10 @@ class productoBase(BaseModel):
 class Login(BaseModel):
     id_usuario:str
     contraseña:str
+
+class compra(BaseModel):
+    
+    id_producto:str
+    id_usuario:str
+    cantidad:Optional[int]
+    

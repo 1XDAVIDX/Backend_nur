@@ -2,8 +2,8 @@ import bcrypt
 from fastapi import FastAPI,Depends,HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
-from modelo import base,RegistroUsuario,RegistroProducto
-from shemas import usuarioBase as cli, productoBase as prod
+from modelo import base,RegistroUsuario,RegistroProducto,compra
+from shemas import usuarioBase as cli, productoBase as prod, compra as com
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -99,3 +99,30 @@ async def modificar(id_producto:str, productomodel:prod, db:Session=Depends(get_
     db.commit()
     db.refresh(validar)
     return validar
+@app.post("/compra")
+async def compra_procto(compramodel:com, db:Session=Depends(get_db)):
+    validar = db.query(RegistroProducto).filter(RegistroProducto.id_producto == compramodel.id_producto).first()
+    
+    if not validar:
+        raise HTTPException(status_code=404, detail="ID no encomtrado")
+    
+    datos = compra(**compramodel.dict())
+    if validar.stock <  compramodel.cantidad:
+        raise HTTPException(status_code=404, detail="Producto agotado")
+   
+    total1 = datos.cantidad * validar.precio
+    datos.total = total1
+    validar.stock = validar.stock - datos.cantidad
+
+    db.add(datos)
+    db.commit()
+    db.refresh(datos)
+    return{
+        "id_compra":datos.id_compra,
+        "id_producto":validar.id_producto,
+        "nombre_producto":validar.nombre,
+        "descripcion":validar.descripcion,
+        "precio":validar.precio,
+        "stock":validar.stock,
+        "total":datos.total
+    }
