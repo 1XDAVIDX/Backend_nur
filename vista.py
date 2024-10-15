@@ -126,3 +126,21 @@ async def compra_procto(compramodel:com, db:Session=Depends(get_db)):
         "stock":validar.stock,
         "total":datos.total
     }
+
+@app.get("/compra")
+async def referenciaCompra(db:Session=Depends(get_db)):
+    datos_compra= db.query(compra).all()
+    return datos_compra
+
+@app.delete("/completada/{id_compra}/{usuario}")
+async def completado(id_compra:int,usuario:str, db:Session=Depends(get_db)):
+    validacion_compra= db.query(compra).filter(compra.id_compra == id_compra).first()
+    validacion_usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == usuario).first()
+
+    db.delete(validacion_compra)
+    db.commit()
+    return {
+        "Compra":validacion_compra,
+        "Usuario":validacion_usuario.id_usuario,
+        "nombre":validacion_usuario.nombre
+    }
