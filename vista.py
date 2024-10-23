@@ -140,7 +140,12 @@ async def completado(id_compra:int,usuario:str, db:Session=Depends(get_db)):
     db.delete(validacion_compra)
     db.commit()
     return {
-        "Compra":validacion_compra,
-        "Usuario":validacion_usuario.id_usuario,
-        "nombre":validacion_usuario.nombre
+        
+        "id_producto":validacion_compra.id_producto,
+        "cantidad":validacion_compra.cantidad,
+        "total":validacion_compra.total,
+        "id_compra":validacion_compra.id_compra,
+        "id_usuario":validacion_usuario.id_usuario,
+        "nombre":validacion_usuario.nombre,
+        "email":validacion_usuario.email,
     }
