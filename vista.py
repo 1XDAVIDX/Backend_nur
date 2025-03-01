@@ -1,13 +1,20 @@
 import bcrypt
-from fastapi import FastAPI,Depends,HTTPException
+from fastapi import FastAPI, UploadFile, File,Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
-from modelo import base,RegistroUsuario,RegistroProducto,compra
-from shemas import usuarioBase as cli, productoBase as prod, compra as com
+from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada
+from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
+import os
+from fastapi.staticfiles import StaticFiles
+
+from verificarjwt import obtener_usuario_autenticado
+from fastapi.security import OAuth2PasswordRequestForm
+from tokens import crear_token
 
 app=FastAPI()
+app.mount("/file_img", StaticFiles(directory="file_img"), name="file_img")
 base.metadata.create_all(bind=crear)
 app.add_middleware(
     CORSMiddleware,
@@ -51,22 +58,70 @@ async def login(user:Login, db:Session=Depends(get_db)):
     if not bcrypt.checkpw(user.contraseña.encode('utf-8'),db_user.contraseña.encode('utf-8')):
         raise HTTPException(status_code=400, detail="contraseña incorrecta")
     
-    return{
-        "mensaje":"inicio de session ok",
-            "nombreUsuario":db_user.nombre,
-            "rol":db_user.rol
+    # Genera el token con el payload del usuario
+    payload = {
+        "id_usuario": db_user.id_usuario,
+        "nombre": db_user.nombre,
+        "email": db_user.email,
+        "rol": db_user.rol
     }
+    token = crear_token(payload)
+
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.get("/mi-perfil")
+async def perfil(usuario: dict = Depends(obtener_usuario_autenticado)):
+    return {"mensaje": "Acceso autorizado", "datos": usuario}
 
 '''login'''
 
-@app.post("/insertar/producto", response_model=prod)
+'''Modificacion del insertar producto'''
+'''antes'''
+'''@app.post("/insertar/producto", response_model=prod)
 async def registro_producto(productomodel:prod, db:Session=Depends(get_db)):
     datos=RegistroProducto(**productomodel.dict())
     db.add(datos)
     db.commit()
     db.refresh(datos)
-    return datos
+    return datos'''
+'''antes'''
 
+'''nuevo'''
+@app.post("/insertar/producto")
+async def registro_producto(
+    id_producto:str=Form(...),
+    nombre:str=Form(...),
+    descripcion:str=Form(...),
+    precio:float=Form(...),
+    stock:int=Form(...),
+    categotia:str=Form(...),
+    file: UploadFile = File(...),   
+    db:Session=Depends(get_db)
+):
+    file_location=f"file_img/{file.filename}"
+    os.makedirs("file_img",exist_ok=True)
+
+    with open(file_location,"wb") as buffer:
+        buffer.write(await file.read())
+
+    producto_data={
+        "id_producto": id_producto,
+        "nombre": nombre,
+        "descripcion": descripcion,
+        "precio": precio,
+        "stock": stock,
+        "categotia": categotia,
+        "imagen": file_location,
+    }
+    db_data= RegistroProducto(** producto_data)
+    db.add(db_data)
+    db.commit()
+    db.refresh(db_data)
+
+    return db_data
+
+
+'''nuevo'''
 @app.get("/concultarclientes", response_model=list[cli])
 async def consultar_cliente(db:Session=Depends(get_db)):
     datos_cliente=db.query(RegistroUsuario).all()
@@ -88,64 +143,236 @@ async def eliminar_usuario(id_producto:str, db: Session = Depends(get_db)):
     db.commit()
     return {"mensaje": "Producto eliminado exitosamente"}
 
-@app.put("/modificarProducto/{id_producto}", response_model=prod)
-async def modificar(id_producto:str, productomodel:prod, db:Session=Depends(get_db)):
-    validar= db.query(RegistroProducto).filter(RegistroProducto.id_producto == id_producto).first()
+
+@app.put("/modificarProducto/{id_producto_validar}", response_model=prod)
+async def modificar(
+    id_producto_validar : str ,
+    id_producto: str = Form(...),
+    nombre: str = Form(...),
+    descripcion: str = Form(...),
+    precio: float = Form(...),
+    stock: int = Form(...),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    
+    validar = db.query(RegistroProducto).filter(RegistroProducto.id_producto == id_producto_validar).first()
+    
     if not validar:
         raise HTTPException(status_code=404, detail="ID no encontrado")
-    for key, value in productomodel.dict().items():
-        setattr(validar, key, value)
+    
+    validar2 = db.query(RegistroProducto).filter(RegistroProducto.id_producto == id_producto).first()
+    if validar2 and validar2.id_producto != id_producto_validar:
+        raise HTTPException(status_code=500, detail="ID ya utilizado")
 
+    validar.id_producto = id_producto
+    validar.nombre = nombre
+    validar.descripcion = descripcion
+    validar.precio = precio
+    validar.stock = stock
+
+    
+    if file:
+        file_location = f"file_img/{file.filename}"
+        os.makedirs("file_img", exist_ok=True)
+
+        with open(file_location, "wb") as buffer:
+            buffer.write(await file.read())
+        
+        validar.imagen = file_location  
+
+    
     db.commit()
     db.refresh(validar)
+
     return validar
+
+
+
 @app.post("/compra")
-async def compra_procto(compramodel:com, db:Session=Depends(get_db)):
+async def compra_procto(compramodel: com, db: Session = Depends(get_db)):
+    # Buscar el producto
+    validar = db.query(RegistroProducto).filter(RegistroProducto.id_producto == compramodel.id_producto).first()
+    if not validar:
+        raise HTTPException(status_code=404, detail="ID no encontrado")
+    
+    if validar.stock < compramodel.cantidad:
+        raise HTTPException(status_code=404, detail="Producto agotado")
+    
+    total1 = compramodel.cantidad * validar.precio
+
+    # Crea la instancia del modelo SQLAlchemy "Compra"
+    compra_db = Compra(
+        id_producto=validar.id_producto,
+        id_usuario=compramodel.id_usuario,
+        cantidad=compramodel.cantidad,
+        total=total1,
+        nombre_producto=validar.nombre  # Guarda el nombre del producto
+    )
+
+    # Actualiza el stock del producto
+    validar.stock -= compramodel.cantidad
+
+    db.add(compra_db)
+    db.commit()
+    db.refresh(compra_db)
+
+    return {
+        "id_compra": compra_db.id_compra,
+        "id_producto": validar.id_producto,
+        "nombre_producto": validar.nombre,
+        "descripcion": validar.descripcion,
+        "precio": validar.precio,
+        "stock": validar.stock,
+        "total": compra_db.total
+    }
+
+@app.get("/compra")
+async def referenciaCompra(db:Session=Depends(get_db)):
+    datos_compra= db.query(Compra).all()
+    return datos_compra
+
+@app.delete("/completada/{id_compra}/{usuario}")
+async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)):
+    validacion_compra = db.query(Compra).filter(Compra.id_compra == id_compra).first()
+    validacion_usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == usuario).first()
+
+    if not validacion_compra or not validacion_usuario:
+        raise HTTPException(status_code=404, detail="Compra o usuario no encontrado")
+
+    # Crea la instancia en la tabla de compras terminadas usando el modelo 'compraTerminada'
+    compra_terminada_instance = compraTerminada(
+        id_producto=validacion_compra.id_producto,
+        id_usuario=validacion_usuario.id_usuario,
+        cantidad=validacion_compra.cantidad,
+        total=validacion_compra.total,
+        id_compra=validacion_compra.id_compra,  # Opcional: almacenar el id original
+        nombre_producto=validacion_compra.nombre_producto
+    )
+
+    db.add(compra_terminada_instance)
+    db.commit()
+
+    # Elimina la compra original de la tabla 'compra'
+    db.delete(validacion_compra)
+    db.commit()
+
+    return {
+        "id_producto": validacion_compra.id_producto,
+        "cantidad": validacion_compra.cantidad,
+        "total": validacion_compra.total,
+        "id_compra": validacion_compra.id_compra,
+        "id_usuario": validacion_usuario.id_usuario,
+        "nombre": validacion_usuario.nombre,
+        "email": validacion_usuario.email,
+    }
+
+
+@app.post("/carrito")
+async def compra_procto(compramodel:carri, db:Session=Depends(get_db)):
     validar = db.query(RegistroProducto).filter(RegistroProducto.id_producto == compramodel.id_producto).first()
     
     if not validar:
         raise HTTPException(status_code=404, detail="ID no encomtrado")
     
-    datos = compra(**compramodel.dict())
+    datos = carritoCompra(**compramodel.dict())
     if validar.stock <  compramodel.cantidad:
         raise HTTPException(status_code=404, detail="Producto agotado")
    
     total1 = datos.cantidad * validar.precio
     datos.total = total1
-    validar.stock = validar.stock - datos.cantidad
+    
 
     db.add(datos)
     db.commit()
     db.refresh(datos)
     return{
-        "id_compra":datos.id_compra,
+        "id_carrito":datos.id_carrito,
         "id_producto":validar.id_producto,
-        "nombre_producto":validar.nombre,
+        "nombre":validar.nombre,
         "descripcion":validar.descripcion,
         "precio":validar.precio,
         "stock":validar.stock,
         "total":datos.total
     }
 
-@app.get("/compra")
+@app.get("/carritoProductos")
 async def referenciaCompra(db:Session=Depends(get_db)):
-    datos_compra= db.query(compra).all()
+    datos_compra= db.query(carritoCompra).all()
     return datos_compra
 
-@app.delete("/completada/{id_compra}/{usuario}")
-async def completado(id_compra:int,usuario:str, db:Session=Depends(get_db)):
-    validacion_compra= db.query(compra).filter(compra.id_compra == id_compra).first()
-    validacion_usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == usuario).first()
+@app.get("/compraTerminado")
+async def compraTermin(db:Session=Depends(get_db)):
+    datos_compraTerminado= db.query(compraTerminada).all()
+    return datos_compraTerminado
+
+
+@app.delete("/quitar/{id_carrito}")
+async def completado(id_carrito:int, db:Session=Depends(get_db)):
+    validacion_compra= db.query(carritoCompra).filter(carritoCompra.id_carrito == id_carrito).first()
+    
 
     db.delete(validacion_compra)
     db.commit()
-    return {
+    return "quitado"
+    
+
+@app.post("/carritoMultiple/{id_usuario}")
+async def compra_producto_multiple(id_usuario: str, db: Session = Depends(get_db)):
+    # Obtener todos los productos del carrito para el usuario
+    listar_compras = db.query(carritoCompra).filter(carritoCompra.id_usuario == id_usuario).all()
+    
+    if not listar_compras:
+        raise HTTPException(status_code=404, detail="El usuario no tiene productos en el carrito")
+    
+    # Lista para almacenar las compras realizadas
+    compras_realizadas = []
+    
+    for item in listar_compras:
+        # Validar que el producto existe en la tabla RegistroProducto
+        validar = db.query(RegistroProducto).filter(RegistroProducto.id_producto == item.id_producto).first()
         
-        "id_producto":validacion_compra.id_producto,
-        "cantidad":validacion_compra.cantidad,
-        "total":validacion_compra.total,
-        "id_compra":validacion_compra.id_compra,
-        "id_usuario":validacion_usuario.id_usuario,
-        "nombre":validacion_usuario.nombre,
-        "email":validacion_usuario.email,
+        if not validar:
+            raise HTTPException(status_code=404, detail=f"Producto con ID {item.id_producto} no encontrado")
+        
+        # Verificar stock disponible del producto
+        if validar.stock < item.cantidad:
+            raise HTTPException(status_code=400, detail=f"Stock insuficiente para el producto {validar.nombre} (ID: {item.id_producto})")
+        
+        # Calcular el total (cantidad * precio)
+        total = item.cantidad * validar.precio
+        
+        # Reducir el stock del producto
+        validar.stock -= item.cantidad
+        
+        # Crear el registro de la compra
+        datos = Compra(
+            id_usuario=id_usuario,
+            id_producto=item.id_producto,
+            cantidad=item.cantidad,
+            total=total,
+
+            nombre_producto=validar.nombre
+        )
+        db.add(datos)
+        compras_realizadas.append({
+            "id_producto": validar.id_producto,
+            "nombre": validar.nombre,
+            "descripcion": validar.descripcion,
+            "precio_unitario": validar.precio,
+            "cantidad_comprada": item.cantidad,
+            "total": total,
+            "stock_restante": validar.stock
+        })
+    
+    # Limpiar el carrito del usuario después de la compra
+    db.query(carritoCompra).filter(carritoCompra.id_usuario == id_usuario).delete()
+    
+    # Confirmar los cambios en la base de datos
+    db.commit()
+    
+    # Retornar resumen de la compra
+    return {
+        "message": "Compra realizada con éxito",
+        "compras": compras_realizadas
     }
