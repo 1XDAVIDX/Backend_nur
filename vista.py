@@ -2,7 +2,7 @@ import bcrypt
 from fastapi import FastAPI, UploadFile, File,Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
-from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada
+from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada,CompraGrafico
 from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
@@ -217,6 +217,21 @@ async def compra_procto(compramodel: com, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(compra_db)
 
+
+    compra_grafico_db = CompraGrafico(
+        id_producto=compra_db.id_producto,
+        id_usuario=compra_db.id_usuario,
+        cantidad=compra_db.cantidad,
+        total=compra_db.total,
+        id_compra=compra_db.id_compra,
+        nombre_producto=compra_db.nombre_producto
+    )
+
+    db.add(compra_grafico_db)
+    db.commit()
+
+    
+
     return {
         "id_compra": compra_db.id_compra,
         "id_producto": validar.id_producto,
@@ -231,6 +246,16 @@ async def compra_procto(compramodel: com, db: Session = Depends(get_db)):
 async def referenciaCompra(db:Session=Depends(get_db)):
     datos_compra= db.query(Compra).all()
     return datos_compra
+
+
+
+
+
+@app.get("/compra_grafico_ver")
+async def compraGraficoVer(db:Session=Depends(get_db)):
+    datos_grafico = db.query(CompraGrafico).all()
+    return datos_grafico
+
 
 @app.delete("/completada/{id_compra}/{usuario}")
 async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)):
