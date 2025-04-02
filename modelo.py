@@ -11,6 +11,7 @@ class RegistroProducto(base):
     stock = Column(Integer, nullable=False)
     categotia = Column(String(50),nullable=True)
     imagen=Column(String(255),nullable=True)
+    cantidadProducto = Column(Integer, nullable=True)
 
 class RegistroUsuario(base):
     __tablename__ = "usuario"

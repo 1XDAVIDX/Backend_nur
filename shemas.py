@@ -17,6 +17,7 @@ class productoBase(BaseModel):
     stock:int=Form(...)
     categotia:str=Form(...)
     imagen: Optional[str]=None
+    cantidadProducto: Optional[int]=None
 
 class Login(BaseModel):
     id_usuario:str

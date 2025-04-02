@@ -292,6 +292,55 @@ async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)
         "email": validacion_usuario.email,
     }
 
+@app.delete("/completadas/{id_usuario}")
+async def completadas(id_usuario: str, db: Session = Depends(get_db)):
+    # Validar que el usuario exista
+    validacion_usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == id_usuario).first()
+    if not validacion_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # Obtener todas las compras del usuario
+    compras_usuario = db.query(Compra).filter(Compra.id_usuario == id_usuario).all()
+    if not compras_usuario:
+        raise HTTPException(status_code=404, detail="No hay compras para este usuario")
+
+    # Lista para almacenar las compras completadas
+    compras_terminadas = []
+
+    for compra in compras_usuario:
+        # Crear la instancia en la tabla de compras terminadas
+        compra_terminada_instance = compraTerminada(
+            id_producto=compra.id_producto,
+            id_usuario=compra.id_usuario,
+            cantidad=compra.cantidad,
+            total=compra.total,
+            id_compra=compra.id_compra,  # Opcional: almacenar el id original
+            nombre_producto=compra.nombre_producto
+        )
+        db.add(compra_terminada_instance)
+
+        # Agregar la compra a la lista de completadas
+        compras_terminadas.append({
+            "id_producto": compra.id_producto,
+            "cantidad": compra.cantidad,
+            "total": compra.total,
+            "id_compra": compra.id_compra,
+            "id_usuario": compra.id_usuario,
+            "nombre_producto": compra.nombre_producto
+        })
+
+        # Eliminar la compra original de la tabla 'compra'
+        db.delete(compra)
+
+    # Confirmar los cambios en la base de datos
+    db.commit()
+
+    # Retornar resumen de las compras completadas
+    return {
+        "message": "Todas las compras del usuario han sido completadas",
+        "compras_completadas": compras_terminadas
+    }
+
 
 @app.post("/carrito")
 async def compra_procto(compramodel:carri, db:Session=Depends(get_db)):
