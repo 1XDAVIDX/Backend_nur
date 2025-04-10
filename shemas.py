@@ -5,7 +5,7 @@ from fastapi import Form
 class usuarioBase(BaseModel):
     id_usuario:str
     nombre:str
-    email:str
+    #email:str
     contraseña:str
     rol:str
 
@@ -35,3 +35,7 @@ class carritoCompra(BaseModel):
     id_usuario:str
     cantidad:Optional[int]
     
+class Email(BaseModel):
+    destinatario: str
+    asunto: str
+    mensaje: str

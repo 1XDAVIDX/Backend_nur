@@ -3,11 +3,12 @@ from fastapi import FastAPI, UploadFile, File,Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
 from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada,CompraGrafico
-from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri
+from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri, Email
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.staticfiles import StaticFiles
+from enviar_email import enviar_email
 
 from verificarjwt import obtener_usuario_autenticado
 from fastapi.security import OAuth2PasswordRequestForm
@@ -25,6 +26,18 @@ app.add_middleware(
 )
 '''login'''
 
+
+@app.post("/enviar-email/")
+async def enviar_correo(email: Email):
+    resultado = enviar_email(email.destinatario, email.asunto, email.mensaje)
+    return resultado
+
+
+
+
+
+
+
 @app.get("/usuario/ID", response_model=list[str])
 async def  mostrarid(db:Session=Depends(get_db)):
     id=db.query(RegistroUsuario.id_usuario).all()
@@ -37,11 +50,13 @@ async def registrar_cliente(clientemodel:cli, db:Session=Depends(get_db)):
     nuevouser=RegistroUsuario(
         id_usuario=clientemodel.id_usuario,
         nombre=clientemodel.nombre,
-        email=clientemodel.email,
+        #email=clientemodel.email,
         contraseña=encriptacion.decode('utf-8'),
         rol=clientemodel.rol
         
     )
+
+    enviar_email(clientemodel.id_usuario,"Bienvenido a la tienda de mascotas","Gracias por registrarte en nuestra tienda de mascotas")
 
 
     db.add(nuevouser)
@@ -57,12 +72,13 @@ async def login(user:Login, db:Session=Depends(get_db)):
         raise HTTPException(status_code=400, detail="Usuario no existe")
     if not bcrypt.checkpw(user.contraseña.encode('utf-8'),db_user.contraseña.encode('utf-8')):
         raise HTTPException(status_code=400, detail="contraseña incorrecta")
+    enviar_email(user.id_usuario,"Bienvenido a la tienda de mascotas","Gracias por iniciar sesion en nuestra tienda de mascotas")
     
     # Genera el token con el payload del usuario
     payload = {
         "id_usuario": db_user.id_usuario,
         "nombre": db_user.nombre,
-        "email": db_user.email,
+        #"email": db_user.email,
         "rol": db_user.rol
     }
     token = crear_token(payload)
@@ -213,6 +229,19 @@ async def compra_procto(compramodel: com, db: Session = Depends(get_db)):
     # Actualiza el stock del producto
     validar.stock -= compramodel.cantidad
 
+    mensaje = f"""
+        Compra realizada,
+
+        Gracias por tu compra.
+        Producto: {compra_db.nombre_producto}
+        Cantidad: {compra_db.cantidad}
+        Total: ${compra_db.total}
+
+        ¡Esperamos que disfrutes tu producto!
+        """
+
+    enviar_email(compramodel.id_usuario, "Compra realizada", mensaje)
+
     db.add(compra_db)
     db.commit()
     db.refresh(compra_db)
@@ -282,6 +311,19 @@ async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)
     db.delete(validacion_compra)
     db.commit()
 
+    mensaje = f"""
+        Producto Enviado,
+
+        Gracias por tu compra.
+        Producto: {compra_terminada_instance.nombre_producto}
+        Cantidad: {compra_terminada_instance.cantidad}
+        Total: ${compra_terminada_instance.total}
+
+        ¡Esperamos que disfrutes tu producto!
+        """
+
+    enviar_email(compra_terminada_instance.id_usuario, "Compra realizada", mensaje)
+
     return {
         "id_producto": validacion_compra.id_producto,
         "cantidad": validacion_compra.cantidad,
@@ -289,7 +331,7 @@ async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)
         "id_compra": validacion_compra.id_compra,
         "id_usuario": validacion_usuario.id_usuario,
         "nombre": validacion_usuario.nombre,
-        "email": validacion_usuario.email,
+        #"email": validacion_usuario.email,
     }
 
 @app.delete("/completadas/{id_usuario}")
@@ -334,6 +376,24 @@ async def completadas(id_usuario: str, db: Session = Depends(get_db)):
 
     # Confirmar los cambios en la base de datos
     db.commit()
+    
+
+    # Crear resumen para el correo
+    resumen = "Producto Enviado,\n\nGracias por tu compra.\n\n"
+    total_general = 0
+
+    for compra in compras_terminadas:
+        resumen += (
+            f"Producto: {compra['nombre_producto']}\n"
+            f"Cantidad: {compra['cantidad']}\n"
+            f"Subtotal: ${compra['total']}\n\n"
+        )
+        total_general += compra["total"]
+
+    resumen += f"Total general: ${total_general}\n\n¡Esperamos que disfrutes tus productos!"
+
+    # Enviar el correo
+    enviar_email(id_usuario, "Compra realizada", resumen)
 
     # Retornar resumen de las compras completadas
     return {
