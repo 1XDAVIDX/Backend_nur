@@ -3,7 +3,7 @@ from fastapi import FastAPI, UploadFile, File,Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
 from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada,CompraGrafico
-from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri, Email
+from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri, Email, EditarUsuario
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -35,7 +35,23 @@ async def enviar_correo(email: Email):
 
 
 
-
+@app.put("/editar/usuario/{id_usuario}", response_model=cli)
+async def editar_usuario(id_usuario: str, usuario_model: EditarUsuario, db: Session = Depends(get_db)):
+    usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == id_usuario).first()
+    
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Actualiza los campos del usuario
+    for key, value in usuario_model.dict(exclude_unset=True).items():
+        if key == "contraseña":  # Si el campo es contraseña, codificarla
+            value = bcrypt.hashpw(value.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        setattr(usuario, key, value)
+    
+    db.commit()
+    db.refresh(usuario)
+    
+    return usuario
 
 
 @app.get("/usuario/ID", response_model=list[str])
@@ -72,12 +88,15 @@ async def login(user:Login, db:Session=Depends(get_db)):
         raise HTTPException(status_code=400, detail="Usuario no existe")
     if not bcrypt.checkpw(user.contraseña.encode('utf-8'),db_user.contraseña.encode('utf-8')):
         raise HTTPException(status_code=400, detail="contraseña incorrecta")
-    enviar_email(user.id_usuario,"Bienvenido a la tienda de mascotas","Gracias por iniciar sesion en nuestra tienda de mascotas")
+    #enviar_email(user.id_usuario,"Bienvenido a la tienda de mascotas","Gracias por iniciar sesion en nuestra tienda de mascotas")
     
     # Genera el token con el payload del usuario
     payload = {
         "id_usuario": db_user.id_usuario,
         "nombre": db_user.nombre,
+        "direccion": db_user.direccion,
+        "telefono": db_user.telefono,
+        "tarjetaCredito": db_user.tarjetaCredito,
         #"email": db_user.email,
         "rol": db_user.rol
     }

@@ -18,7 +18,12 @@ class RegistroUsuario(base):
     id_usuario = Column(String(320), primary_key=True, unique=True, index=True)
     nombre = Column(String(50), nullable=True)
     #email = Column(String(50), nullable=True)
-    contraseña = Column(String(100), nullable=False)  
+    contraseña = Column(String(100), nullable=False) 
+     
+    direccion = Column(String(100), nullable=True)
+    telefono = Column(String(20), nullable=True)
+    tarjetaCredito = Column(String(20), nullable=True)
+
     rol=Column(String(20), nullable=False )
 
 

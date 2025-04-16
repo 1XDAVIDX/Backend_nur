@@ -39,3 +39,11 @@ class Email(BaseModel):
     destinatario: str
     asunto: str
     mensaje: str
+
+class EditarUsuario(BaseModel):
+    id_usuario: Optional[str] = None
+    nombre: Optional[str] = None
+    contraseña: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    tarjetaCredito: Optional[str] = None
