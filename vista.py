@@ -3,7 +3,7 @@ from fastapi import FastAPI, UploadFile, File,Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from conexion import crear,get_db
 from modelo import base,RegistroUsuario,RegistroProducto,Compra,carritoCompra,compraTerminada,CompraGrafico
-from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri, Email, EditarUsuario
+from shemas import usuarioBase as cli, productoBase as prod, CompraCreate as com, carritoCompra as carri, Email, EditarUsuario, EditarCompraTerminada
 from shemas import Login
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -13,6 +13,7 @@ from enviar_email import enviar_email
 from verificarjwt import obtener_usuario_autenticado
 from fastapi.security import OAuth2PasswordRequestForm
 from tokens import crear_token
+from datetime import datetime
 
 app=FastAPI()
 app.mount("/file_img", StaticFiles(directory="file_img"), name="file_img")
@@ -24,8 +25,22 @@ app.add_middleware(
     allow_methods =["*"],
     allow_headers =["*"],
 )
-'''login'''
 
+@app.put("/editarCompraTer/{id_CompraTerminada}", response_model=EditarCompraTerminada)
+async def editar_compra_terminada(id_CompraTerminada: int, compra_model: EditarCompraTerminada, db: Session = Depends(get_db)):
+    compra = db.query(compraTerminada).filter(compraTerminada.id_CompraTerminada == id_CompraTerminada).first()
+    
+    if not compra:
+        raise HTTPException(status_code=404, detail="Compra no encontrada")
+    
+    # Actualiza los campos de la compra
+    for key, value in compra_model.dict(exclude_unset=True).items():
+        setattr(compra, key, value)
+    
+    db.commit()
+    db.refresh(compra)
+    
+    return compra 
 
 @app.post("/enviar-email/")
 async def enviar_correo(email: Email):
@@ -35,7 +50,7 @@ async def enviar_correo(email: Email):
 
 
 
-@app.put("/editar/usuario/{id_usuario}", response_model=cli)
+@app.put("/editar/usuario/{id_usuario}", response_model=dict)
 async def editar_usuario(id_usuario: str, usuario_model: EditarUsuario, db: Session = Depends(get_db)):
     usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == id_usuario).first()
     
@@ -50,8 +65,34 @@ async def editar_usuario(id_usuario: str, usuario_model: EditarUsuario, db: Sess
     
     db.commit()
     db.refresh(usuario)
+    # Generar un nuevo token con los datos actualizados del usuario
+    payload = {
+        "id_usuario": usuario.id_usuario,
+        "nombre": usuario.nombre,
+        "direccion": usuario.direccion,
+        "telefono": usuario.telefono,
+        "tarjetaCredito": usuario.tarjetaCredito,
+        "rol": usuario.rol
+    }
+    token = crear_token(payload)
     
-    return usuario
+    # Generar un nuevo token con los datos actualizados del usuario
+    payload = {
+        "id_usuario": usuario.id_usuario,
+        "nombre": usuario.nombre,
+        "direccion": usuario.direccion,
+        "telefono": usuario.telefono,
+        "tarjetaCredito": usuario.tarjetaCredito,
+        "rol": usuario.rol
+    }
+    token = crear_token(payload)
+    
+    return {
+        "mensaje": "Usuario actualizado correctamente",
+        "usuario": usuario,
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 
 @app.get("/usuario/ID", response_model=list[str])
@@ -320,7 +361,10 @@ async def completado(id_compra: int, usuario: str, db: Session = Depends(get_db)
         cantidad=validacion_compra.cantidad,
         total=validacion_compra.total,
         id_compra=validacion_compra.id_compra,  # Opcional: almacenar el id original
-        nombre_producto=validacion_compra.nombre_producto
+        nombre_producto=validacion_compra.nombre_producto,
+        fecha=datetime.now().date(),
+        estado="Enviado",
+        guiaTranporte="Guia en Tramite"  
     )
 
     db.add(compra_terminada_instance)
@@ -376,7 +420,10 @@ async def completadas(id_usuario: str, db: Session = Depends(get_db)):
             cantidad=compra.cantidad,
             total=compra.total,
             id_compra=compra.id_compra,  # Opcional: almacenar el id original
-            nombre_producto=compra.nombre_producto
+            nombre_producto=compra.nombre_producto,
+            fecha=datetime.now().date(),
+            estado="Enviado",
+            guiaTranporte="Guia en Tramite"  
         )
         db.add(compra_terminada_instance)
 

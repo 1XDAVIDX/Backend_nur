@@ -1,6 +1,7 @@
 from pydantic import BaseModel;
 from typing import Optional
 from fastapi import Form
+from datetime import date
 
 class usuarioBase(BaseModel):
     id_usuario:str
@@ -28,6 +29,7 @@ class CompraCreate(BaseModel):
     id_producto:str
     id_usuario:str
     cantidad:Optional[int]
+    
 
 class carritoCompra(BaseModel):
     
@@ -47,3 +49,10 @@ class EditarUsuario(BaseModel):
     direccion: Optional[str] = None
     telefono: Optional[str] = None
     tarjetaCredito: Optional[str] = None
+
+
+class EditarCompraTerminada(BaseModel):
+    
+    fecha: Optional[date] = None
+    estado: Optional[str] = None
+    guiaTranporte: Optional[str] = None
