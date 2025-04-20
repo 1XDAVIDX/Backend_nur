@@ -50,7 +50,7 @@ async def enviar_correo(email: Email):
 
 
 
-@app.put("/editar/usuario/{id_usuario}", response_model=dict)
+@app.put("/editar/usuario/{id_usuario}", response_model=cli)
 async def editar_usuario(id_usuario: str, usuario_model: EditarUsuario, db: Session = Depends(get_db)):
     usuario = db.query(RegistroUsuario).filter(RegistroUsuario.id_usuario == id_usuario).first()
     
@@ -66,33 +66,8 @@ async def editar_usuario(id_usuario: str, usuario_model: EditarUsuario, db: Sess
     db.commit()
     db.refresh(usuario)
     # Generar un nuevo token con los datos actualizados del usuario
-    payload = {
-        "id_usuario": usuario.id_usuario,
-        "nombre": usuario.nombre,
-        "direccion": usuario.direccion,
-        "telefono": usuario.telefono,
-        "tarjetaCredito": usuario.tarjetaCredito,
-        "rol": usuario.rol
-    }
-    token = crear_token(payload)
-    
-    # Generar un nuevo token con los datos actualizados del usuario
-    payload = {
-        "id_usuario": usuario.id_usuario,
-        "nombre": usuario.nombre,
-        "direccion": usuario.direccion,
-        "telefono": usuario.telefono,
-        "tarjetaCredito": usuario.tarjetaCredito,
-        "rol": usuario.rol
-    }
-    token = crear_token(payload)
-    
-    return {
-        "mensaje": "Usuario actualizado correctamente",
-        "usuario": usuario,
-        "access_token": token,
-        "token_type": "bearer"
-    }
+   
+    return usuario
 
 
 @app.get("/usuario/ID", response_model=list[str])
